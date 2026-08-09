@@ -1,0 +1,43 @@
+# 中医药知识图谱智能问答系统 - 一键部署
+# 使用方式: docker-compose up -d
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: tcm-neo4j
+    ports:
+      - "7474:7474"   # 浏览器控制台
+      - "7687:7687"   # Bolt 协议
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j}
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER:-neo4j}",
+             "-p", "${NEO4J_PASSWORD:-neo4j}", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: tcm-app
+    ports:
+      - "8501:8501"
+    env_file:
+      - ../.env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      MODELSCOPE_CACHE: /app/models
+    volumes:
+      - model_cache:/app/models    # 国产模型权重缓存（GTE/COROM），重启不重复下载
+      - faiss_index:/app/index
+    depends_on:
+      neo4j:
+        condition: service_healthy
+
+volumes:
+  neo4j_data:
+  model_cache:
+  faiss_index:
