@@ -32,7 +32,7 @@ if question:
         sources = []
 
         def _text_stream():
-            nonlocal sources
+            global sources
             for event in qa_stream(question):
                 if event["type"] == "sources":
                     sources = event["data"]
