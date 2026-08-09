@@ -433,8 +433,8 @@ tcm-knowledge-graph/
 │   │   └── publish.py
 │   └── components/
 ├── deploy/                         # 部署配置
-│   ├── docker-compose.yml
-│   └── kubernetes/
+│   └── docker-compose.yml
+├── common/                         # 公共基础模块（配置加载/LLM工厂/GTE向量服务）
 ├── configs/                        # 配置文件
 │   ├── neo4j_config.yaml
 │   ├── faiss_config.yaml
