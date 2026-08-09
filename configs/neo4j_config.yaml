@@ -1,0 +1,27 @@
+# Neo4j 图数据库配置（敏感值通过 .env 环境变量注入）
+neo4j:
+  uri: bolt://localhost:7687        # 可被 NEO4J_URI 覆盖
+  user: neo4j                        # 可被 NEO4J_USER 覆盖
+  database: neo4j
+
+# 图谱节点标签与索引字段
+schema:
+  nodes:
+    - label: Herb          # 药材
+      index_field: name
+    - label: Fangji        # 方剂
+      index_field: name
+    - label: Symptom       # 症状
+      index_field: name
+    - label: Syndrome      # 证型
+      index_field: name
+    - label: Effect        # 功效
+      index_field: name
+    - label: Disease       # 疾病
+      index_field: name
+  relations:
+    - COMPOSED_OF            # (方剂)-[:COMPOSED_OF]->(药材)
+    - TREATS                 # (方剂)-[:TREATS]->(证型/疾病)
+    - HAS_SYMPTOM            # (证型)-[:HAS_SYMPTOM]->(症状)
+    - HAS_EFFECT             # (药材)-[:HAS_EFFECT]->(功效)
+    - CONTRAINDICATED_WITH   # (药材)-[:CONTRAINDICATED_WITH]->(药材)

@@ -1,0 +1,29 @@
+# LLM 配置（DeepSeek，国产 API，零本地下载）
+llm:
+  model: deepseek-chat        # 可被 DEEPSEEK_MODEL 覆盖
+  temperature: 0.3
+  max_tokens: 2048
+
+# 混合检索配置
+retrieval:
+  top_k: 10
+  candidate_multiplier: 2     # 各路召回 top_k * 倍数后再融合
+  rrf_k: 60                   # RRF 融合常数
+  weights:                    # 三路检索参考权重
+    graph: 0.4
+    vector: 0.3
+    keyword: 0.3
+
+# 重排序（达摩院 COROM，ModelScope 下载）
+rerank:
+  enabled: true
+  model: damo/nlp_corom_ranking_chinese-base
+
+# 内容生成（小红书风格）
+content:
+  platform: xiaohongshu
+  max_length: 800
+  style:
+    - emoji
+    - 口语化
+    - 话题标签

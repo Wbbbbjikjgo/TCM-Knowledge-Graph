@@ -1,0 +1,19 @@
+# FAISS 向量索引配置
+embedding:
+  # 达摩院 GTE 中文向量模型（ModelScope 魔搭社区国内直连下载）
+  model: damo/nlp_gte_sentence-embedding_chinese-base
+  dim: 768
+
+index:
+  type: IndexFlatIP    # 内积相似度（向量归一化后等价余弦相似度）
+  normalize: true
+  dir: index           # 索引文件输出目录
+
+# 索引集合：与 Neo4j 节点通过 entity_id 关联
+collections:
+  - name: herb_embeddings
+    entity_label: Herb
+  - name: formula_embeddings
+    entity_label: Fangji
+  - name: symptom_embeddings
+    entity_label: Symptom

@@ -1,0 +1,37 @@
+# Web 前端
+streamlit>=1.30.0
+streamlit-echarts>=0.4.0
+pyvis>=0.3.2
+
+# AI 框架与编排
+langchain>=0.2.0
+langchain-openai>=0.1.0
+langchain-community>=0.2.0
+langgraph>=0.1.0
+
+# 国产模型下载（达摩院 GTE 向量 / COROM 排序，魔搭社区国内直连）
+modelscope>=1.15.0
+sentence-transformers>=2.7.0
+torch>=2.1.0
+
+# 向量检索
+faiss-cpu>=1.7.4
+numpy>=1.24.0
+
+# 图数据库
+neo4j>=5.0.0
+
+# 关键词检索（BM25）
+rank-bm25>=0.2.2
+
+# 数据采集与解析
+scrapy>=2.11.0
+requests>=2.31.0
+PyPDF2>=3.0.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+
+# 工具
+python-dotenv>=1.0.0
+PyYAML>=6.0
+pydantic>=2.5.0

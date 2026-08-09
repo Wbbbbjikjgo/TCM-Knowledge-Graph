@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 环境变量与密钥
+.env
+
+# 缓存
+.cache/
+.pytest_cache/
+
+# 模型权重目录（体积大，不入库）
+models/
+
+# FAISS 索引与中间产物
+index/
+*.faiss
+*.npy
+*.pkl
+
+# 采集的原始数据
+data/raw_data/
+
+# IDE
+.idea/
+.vscode/
+
+# 系统文件
+.DS_Store
+Thumbs.db
