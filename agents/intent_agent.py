@@ -25,7 +25,9 @@ def identify_intent(state: dict) -> dict:
     messages = state.get("messages", [])
     question = messages[-1].content if messages else ""
 
-    chain = get_llm(temperature=0).with_structured_output(IntentResult)
+    chain = get_llm(temperature=0).with_structured_output(
+        IntentResult, method="function_calling"
+    )
     try:
         result = chain.invoke([
             ("system", INTENT_PROMPT),

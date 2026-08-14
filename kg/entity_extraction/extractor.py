@@ -30,7 +30,9 @@ class EntityRelationExtractor:
     """基于 DeepSeek 结构化输出的实体与关系联合抽取器。"""
 
     def __init__(self):
-        self.chain = get_llm(temperature=0).with_structured_output(ExtractionResult)
+        self.chain = get_llm(temperature=0).with_structured_output(
+            ExtractionResult, method="function_calling"
+        )
         self.system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
             entity_types="、".join(ENTITY_TYPES),
             relation_types="、".join(RELATION_TYPES),
@@ -49,6 +51,18 @@ class EntityRelationExtractor:
 
     def extract_document(self, doc: dict, chunk_size: int = 800) -> ExtractionResult:
         """对 parse_file 输出的结构化文档逐块抽取并合并去重。"""
+        """
+            doc = {
+            "sections": [
+            {
+            "content": "Albert Einstein was born in Germany. He developed the theory of relativity."
+            },
+            {
+            "content": "Einstein won the Nobel Prize in Physics in 1921. His famous equation is E=mc^2."
+            }
+            ]
+            }
+        """
         merged = ExtractionResult()
         seen_entities, seen_triples = set(), set()
 
@@ -69,15 +83,65 @@ class EntityRelationExtractor:
 
 
 def _split_chunks(text: str, chunk_size: int) -> list[str]:
-    """按段落边界切分长文本，避免超出模型上下文。"""
+    """按段落边界切分长文本，避免超出模型上下文。
+    
+    功能说明：
+    1. 将文本按段落（换行符）分割
+    2. 尽可能保持段落完整，避免在段落中间截断
+    3. 当累积内容超过 chunk_size 时，切分为一个块
+    4. 保证每个块的大小尽可能接近但不超过 chunk_size
+    
+    参数:
+        text: 待切分的原始文本
+        chunk_size: 每个块的最大字符数
+        
+    返回:
+        list[str]: 切分后的文本块列表
+        
+    示例：
+        输入: "第一段内容。\n第二段内容。\n第三段内容。"
+        chunk_size: 10
+        输出: ["第一段内容。", "第二段内容。", "第三段内容。"]
+    """
+    
+    # ==================== 第一步：分割段落 ====================
+    # 按换行符分割文本，去除空行和首尾空白
+    # 例子：
+    # text = "麻黄，味辛，微苦，性温。\n\n归肺经、膀胱经。\n具有发汗解表，宣肺平喘的功效。"
+    # paragraphs = ["麻黄，味辛，微苦，性温。", "归肺经、膀胱经。", "具有发汗解表，宣肺平喘的功效。"]
     paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+    
+    # ==================== 第二步：初始化变量 ====================
+    # chunks: 存储所有切分好的文本块
+    # buf: 缓冲区，用于累积当前正在构建的文本块
     chunks, buf = [], ""
+    
+    # ==================== 第三步：遍历段落构建块 ====================
     for p in paragraphs:
+        # 检查当前缓冲区和当前段落组合后是否超过 chunk_size
+        # 且缓冲区不为空（避免空块）
+        # 
+        # 例子1：buf="麻黄，味辛，微苦，性温。" (12字符), p="归肺经、膀胱经。" (8字符), chunk_size=20
+        # len(buf) + len(p) = 20, 不超过20，执行 else 分支：合并
+        # 
+        # 例子2：buf="麻黄，味辛，微苦，性温。归肺经、膀胱经。" (20字符), p="具有发汗解表，宣肺平喘的功效。" (13字符), chunk_size=20
+        # len(buf) + len(p) = 33 > 20，执行 if 分支：保存当前块，重置缓冲区
         if len(buf) + len(p) > chunk_size and buf:
+            # 将当前缓冲区内容作为一个块保存
             chunks.append(buf)
+            # 当前段落成为新块的开始
             buf = p
         else:
+            # 合并当前段落到缓冲区
+            # 如果缓冲区为空，直接赋值；否则用换行符连接
             buf = buf + "\n" + p if buf else p
+    
+    # ==================== 第四步：处理最后一个块 ====================
+    # 如果缓冲区还有内容，添加到结果中
     if buf:
         chunks.append(buf)
+    
+    # ==================== 第五步：保底处理 ====================
+    # 如果最终没有得到任何块（比如输入为空或只有空行），
+    # 返回包含原始文本的单元素列表（如果文本非空），否则返回空列表
     return chunks or ([text] if text else [])

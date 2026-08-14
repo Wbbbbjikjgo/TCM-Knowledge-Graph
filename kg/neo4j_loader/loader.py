@@ -18,8 +18,8 @@ def get_driver():
     )
 
 
-class KnowledgeGraphLoader:
     """将抽取结果写入 Neo4j，构建中医药知识图谱。"""
+class KnowledgeGraphLoader:
 
     def __init__(self, driver=None):
         self.driver = driver or get_driver()
