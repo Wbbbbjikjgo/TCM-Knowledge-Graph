@@ -49,19 +49,31 @@ def build_collection(driver, embedder, collection: dict, out_dir: Path) -> int:
     return len(entities)
 
 
-def main():
+def rebuild_index() -> dict:
+    """从 Neo4j 读取全部集合实体并重建 FAISS 索引，返回 {集合名: 实体数}。
+
+    供知识入库后（数据导入页面）复用，避免索引与实际图谱不一致。
+    """
     cfg = load_config("faiss_config.yaml")
     out_dir = PROJECT_ROOT / cfg["index"]["dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
 
     embedder = EmbeddingService.get_instance()
     driver = get_driver()
+    stats = {}
     try:
         for collection in cfg["collections"]:
             n = build_collection(driver, embedder, collection, out_dir)
-            print(f"[{collection['name']}] 索引构建完成，实体数: {n}")
+            stats[collection["name"]] = n
     finally:
         driver.close()
+    return stats
+
+
+def main():
+    stats = rebuild_index()
+    for name, n in stats.items():
+        print(f"[{name}] 索引构建完成，实体数: {n}")
 
 
 if __name__ == "__main__":
