@@ -19,6 +19,9 @@ schema:
       index_field: name
     - label: Disease       # 疾病
       index_field: name
+  chunks:
+    label: Chunk           # 原文片段
+    index_field: chunk_id
   relations:
     - COMPOSED_OF            # (方剂)-[:COMPOSED_OF]->(药材)
     - TREATS                 # (方剂)-[:TREATS]->(证型/疾病)

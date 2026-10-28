@@ -12,25 +12,37 @@ def ingest_docs(docs: list[dict], rebuild_index: bool = True) -> dict:
         {"source": ..., "format": ..., "sections": [{"section": ..., "content": ...}]}
 
     返回：
-        {"docs": [{source, format, nodes, relations}], "nodes", "relations", "index"}
+        {"docs": [{source, format, nodes, relations, chunks}],
+         "nodes", "relations", "chunks", "index"}
     """
     extractor = EntityRelationExtractor()
     loader = KnowledgeGraphLoader()
     try:
         loader.ensure_schema()
         per_doc = []
-        total_nodes = total_relations = 0
+        seen_nodes, seen_relations = set(), set()
+        total_chunks = 0
+
         for doc in docs:
-            result = extractor.extract_document(doc)
-            result = validate_extraction(result)
-            stats = loader.load(result)
-            total_nodes += stats["nodes"]
-            total_relations += stats["relations"]
+            doc_nodes, doc_relations, doc_chunks = set(), set(), 0
+            for chunk, result in extractor.extract_chunks(doc):
+                result = validate_extraction(result)
+                loader.load(result, chunk=chunk)
+                doc_chunks += 1
+                for e in result.entities:
+                    doc_nodes.add((e.entity_type, e.entity_name))
+                for t in result.triples:
+                    doc_relations.add((t.head, t.relation, t.tail))
+
+            seen_nodes.update(doc_nodes)
+            seen_relations.update(doc_relations)
+            total_chunks += doc_chunks
             per_doc.append({
                 "source": doc.get("source", ""),
                 "format": doc.get("format", ""),
-                "nodes": stats["nodes"],
-                "relations": stats["relations"],
+                "nodes": len(doc_nodes),
+                "relations": len(doc_relations),
+                "chunks": doc_chunks,
             })
 
         index_stats = None
@@ -40,8 +52,9 @@ def ingest_docs(docs: list[dict], rebuild_index: bool = True) -> dict:
 
         return {
             "docs": per_doc,
-            "nodes": total_nodes,
-            "relations": total_relations,
+            "nodes": len(seen_nodes),
+            "relations": len(seen_relations),
+            "chunks": total_chunks,
             "index": index_stats,
         }
     finally:

@@ -12,10 +12,11 @@ def rrf_fusion(ranked_lists: list[list[dict]], weights: list[float],
     fused: dict[str, dict] = {}
     for results, weight in zip(ranked_lists, weights):
         for rank, item in enumerate(results):
-            key = item.get("name") or item.get("text", "")[:50]
+            key = (item.get("id") or item.get("chunk_id") or item.get("entity_id")
+                   or item.get("name") or item.get("text", "")[:50])
             entry = fused.setdefault(key, {**item, "rrf_score": 0.0, "sources": []})
             entry["rrf_score"] += weight / (rrf_k + rank + 1)
-            entry["sources"].append(item.get("source", "unknown"))
+            entry["sources"].append(item.get("retriever", "unknown"))
     return sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
 
 
@@ -60,10 +61,20 @@ class HybridRetriever:
         return fused[:top_k]
 
     def build_context(self, results: list[dict]) -> str:
-        """将检索结果拼接为供 LLM 使用的参考上下文。"""
+        """将检索结果拼接为供 LLM 使用的参考上下文，原文块附带来源。"""
         lines = []
         for i, item in enumerate(results, 1):
-            lines.append(f"[{i}] {item.get('text') or item.get('name', '')}")
+            text = item.get("text") or item.get("name", "")
+            if item.get("kind") == "chunk":
+                loc = " · ".join(
+                    x for x in (item.get("source"), item.get("section")) if x
+                )
+                prefix = f"（{loc}）" if loc else ""
+                lines.append(f"[{i}] {prefix}{text}")
+            else:
+                source = item.get("source")
+                suffix = f"（来源：{source}）" if source else ""
+                lines.append(f"[{i}] {text}{suffix}")
         return "\n".join(lines)
 
     # ---------- 内部方法 ----------
@@ -75,7 +86,7 @@ class HybridRetriever:
         try:
             results = retriever.search(query, top_k=k)
             for r in results:
-                r["source"] = source
+                r["retriever"] = source
             return results
         except Exception:
             return []

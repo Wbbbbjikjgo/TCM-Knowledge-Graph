@@ -15,14 +15,18 @@ tab_file, tab_crawl, tab_index = st.tabs(["📄 文件上传", "🕷️ 网页�
 
 
 def _render_stats(stats: dict) -> None:
-    st.success(f"入库完成：{stats['nodes']} 个节点、{stats['relations']} 条关系")
+    st.success(
+        f"入库完成：{stats['nodes']} 个节点、{stats['relations']} 条关系、"
+        f"{stats.get('chunks', 0)} 个原文片段"
+    )
     if stats.get("index"):
         idx_text = "、".join(f"{k}: {v} 条" for k, v in stats["index"].items())
         st.info(f"FAISS 向量索引已重建：{idx_text}")
     if stats.get("docs"):
         st.dataframe([
             {"来源": d["source"], "格式": d.get("format", ""),
-             "节点数": d["nodes"], "关系数": d["relations"]}
+             "节点数": d["nodes"], "关系数": d["relations"],
+             "原文片段数": d.get("chunks", 0)}
             for d in stats["docs"]
         ])
 
@@ -111,7 +115,7 @@ with tab_index:
     if st.button("重建 FAISS 向量索引", type="primary"):
         try:
             from retrieval.vector_index.index_builder import rebuild_index
-            with st.spinner("从 Neo4j 读取实体并重建索引..."):
+            with st.spinner("从 Neo4j 读取原文块与实体并重建索引..."):
                 stats = rebuild_index()
             idx_text = "、".join(f"{k}: {v} 条" for k, v in stats.items())
             st.success(f"索引重建完成：{idx_text}")

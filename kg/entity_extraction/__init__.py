@@ -5,6 +5,13 @@ from kg.entity_extraction.extractor import (
     EntityRelationExtractor,
     ExtractionResult,
     Triple,
+    split_document,
 )
 
-__all__ = ["Entity", "Triple", "ExtractionResult", "EntityRelationExtractor"]
+__all__ = [
+    "Entity",
+    "Triple",
+    "ExtractionResult",
+    "EntityRelationExtractor",
+    "split_document",
+]

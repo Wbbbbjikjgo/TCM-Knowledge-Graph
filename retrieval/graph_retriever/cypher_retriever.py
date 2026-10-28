@@ -43,11 +43,14 @@ class GraphRetriever:
             for label in self.labels:
                 records = session.run(
                     f"MATCH (n:{label}) WHERE $q CONTAINS n.name "
-                    f"RETURN n.name AS name LIMIT $limit",
+                    f"RETURN elementId(n) AS id, n.name AS name LIMIT $limit",
                     q=query,
                     limit=limit,
                 ).data()
-                found.extend({"name": r["name"], "label": label} for r in records)
+                found.extend(
+                    {"id": r["id"], "name": r["name"], "label": label}
+                    for r in records
+                )
         return found[:limit]
 
     def neighborhood_facts(self, name: str, label: str, limit: int = 20) -> list[str]:
@@ -55,6 +58,7 @@ class GraphRetriever:
         with self.driver.session() as session:
             records = session.run(
                 f"MATCH (a:{label} {{name: $name}})-[r]-(b) "
+                f"WHERE type(r) <> 'MENTIONED_IN' "
                 f"RETURN type(r) AS rel, labels(b)[0] AS blabel, b.name AS bname, "
                 f"startNode(r).name = $name AS outgoing LIMIT $limit",
                 name=name,
@@ -68,18 +72,42 @@ class GraphRetriever:
                 facts.append(f"({r['bname']})-[:{r['rel']}]->({name})")
         return facts
 
+    def chunk_evidence(self, name: str, label: str, limit: int = 3) -> list[dict]:
+        """获取实体出现的原文片段，用于回答溯源。"""
+        with self.driver.session() as session:
+            return session.run(
+                f"MATCH (a:{label} {{name: $name}})-[:MENTIONED_IN]->(c:Chunk) "
+                f"RETURN c.chunk_id AS chunk_id, c.text AS text, "
+                f"c.source AS source, c.section AS section, "
+                f"c.chunk_seq AS seq "
+                f"ORDER BY c.chunk_seq LIMIT $limit",
+                name=name,
+                limit=limit,
+            ).data()
+
     def search(self, query: str, top_k: int = 10) -> list[dict]:
-        """图谱结构化检索：实体匹配 + 邻域扩展，输出文本事实候选。"""
+        """图谱结构化检索：实体匹配 + 邻域扩展 + 原文证据。"""
         results = []
         for entity in self.find_entities(query, limit=top_k):
             facts = self.neighborhood_facts(entity["name"], entity["label"])
-            if facts:
-                results.append({
-                    "name": entity["name"],
-                    "label": entity["label"],
-                    "text": f"{entity['name']}：" + "；".join(facts),
-                    "facts": facts,
-                })
+            evidence = self.chunk_evidence(entity["name"], entity["label"])
+            if not (facts or evidence):
+                continue
+            text = f"{entity['name']}：" + ("；".join(facts) if facts else "无关联事实")
+            if evidence:
+                text += "\n原文：" + "；".join(e["text"] for e in evidence[:2])
+            results.append({
+                "id": entity["id"],
+                "entity_id": entity["id"],
+                "kind": "entity",
+                "name": entity["name"],
+                "label": entity["label"],
+                "text": text,
+                "facts": facts,
+                "evidence": evidence,
+                "source": evidence[0]["source"] if evidence else "",
+                "section": evidence[0]["section"] if evidence else "",
+            })
         return results[:top_k]
 
     # ---------- 自然语言转 Cypher ----------

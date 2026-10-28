@@ -30,6 +30,7 @@ if st.button("查询并渲染", type="primary") and entity_name.strip():
             records = session.run(
                 """
                 MATCH (a {name: $name})-[r]-(b)
+                WHERE NOT b:Chunk
                 RETURN labels(a)[0] AS alabel, a.name AS aname,
                        type(r) AS rel, labels(b)[0] AS blabel, b.name AS bname
                 LIMIT 100

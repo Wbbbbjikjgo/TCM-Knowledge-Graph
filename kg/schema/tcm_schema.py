@@ -24,6 +24,10 @@ RELATION_TYPE_MAP = {
 
 RELATION_TYPES = list(RELATION_TYPE_MAP.keys())
 
+# 原文块节点与“实体出现于原文块”的关系
+CHUNK_LABEL = "Chunk"
+MENTIONED_IN = "MENTIONED_IN"
+
 # 关系合法性约束：(头实体类型, 关系, 尾实体类型) 允许的组合
 VALID_TRIPLE_PATTERNS = {
     ("方剂", "主治", "证型"),

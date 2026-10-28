@@ -57,11 +57,19 @@ class KeywordRetriever:
             if scores[i] <= 0:
                 break
             e = self.corpus[i]
+            item_id = e.get("id") or e.get("entity_id", "")
+            kind = e.get("kind", "entity")
             results.append({
-                "entity_id": e["entity_id"],
-                "label": e["label"],
-                "name": e["name"],
-                "text": e["text"],
+                "id": item_id,
+                "entity_id": e.get("entity_id", ""),
+                "chunk_id": e.get("chunk_id", item_id if kind == "chunk" else ""),
+                "kind": kind,
+                "label": e.get("label", ""),
+                "name": e.get("name", ""),
+                "text": e.get("text", ""),
+                "source": e.get("source", ""),
+                "section": e.get("section", ""),
+                "order": e.get("order", 0),
                 "score": float(scores[i]),
             })
         return results

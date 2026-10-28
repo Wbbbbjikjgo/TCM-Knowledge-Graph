@@ -105,63 +105,105 @@ HERB_EFFECTS = {
 }
 
 
+def _formula_result(formula: dict) -> ExtractionResult:
+    """由单个方剂构造抽取结果。"""
+    name = formula["name"]
+    syndrome = formula["syndrome"]
+    entities = [Entity(entity_type="方剂", entity_name=name)]
+    triples = []
+
+    for herb in formula["herbs"]:
+        entities.append(Entity(entity_type="药材", entity_name=herb))
+        triples.append(Triple(head=name, relation="组成", tail=herb))
+
+    entities.append(Entity(entity_type="证型", entity_name=syndrome))
+    triples.append(Triple(head=name, relation="主治", tail=syndrome))
+
+    for symptom in formula["symptoms"]:
+        entities.append(Entity(entity_type="症状", entity_name=symptom))
+        triples.append(Triple(head=syndrome, relation="对应症状", tail=symptom))
+    return ExtractionResult(entities=entities, triples=triples)
+
+
+def _herb_result(herb: str, effects: list[str]) -> ExtractionResult:
+    """由单味药材构造抽取结果。"""
+    entities = [Entity(entity_type="药材", entity_name=herb)]
+    triples = []
+    for effect in effects:
+        entities.append(Entity(entity_type="功效", entity_name=effect))
+        triples.append(Triple(head=herb, relation="功效", tail=effect))
+    return ExtractionResult(entities=entities, triples=triples)
+
+
+def iter_demo_chunks():
+    """产出 (原文块, 抽取结果)，让演示数据同样具备原文索引。"""
+    order = 0
+    for i, formula in enumerate(FORMULAS):
+        text = (
+            f"{formula['name']}，组成：{'、'.join(formula['herbs'])}。"
+            f"主治：{formula['syndrome']}。"
+            f"常见症状：{'、'.join(formula['symptoms'])}。"
+        )
+        yield {
+            "chunk_id": f"demo-formula-{i:02d}",
+            "source": "demo:方剂",
+            "section": formula["name"],
+            "order": order,
+            "text": text,
+        }, _formula_result(formula)
+        order += 1
+
+    for i, (herb, effects) in enumerate(HERB_EFFECTS.items()):
+        text = f"{herb}，功效：{'、'.join(effects)}。"
+        yield {
+            "chunk_id": f"demo-herb-{i:02d}",
+            "source": "demo:药材",
+            "section": herb,
+            "order": order,
+            "text": text,
+        }, _herb_result(herb, effects)
+        order += 1
+
+
 def build_extraction_result() -> ExtractionResult:
-    """从演示数据构建 ExtractionResult。"""
+    """从演示数据构建合并去重后的 ExtractionResult。"""
     entities = []
     triples = []
     seen_entities = set()
     seen_triples = set()
 
-    def add_entity(entity_type: str, entity_name: str):
-        key = (entity_type, entity_name)
-        if key not in seen_entities:
-            seen_entities.add(key)
-            entities.append(Entity(entity_type=entity_type, entity_name=entity_name))
-
-    def add_triple(head: str, relation: str, tail: str):
-        key = (head, relation, tail)
-        if key not in seen_triples:
-            seen_triples.add(key)
-            triples.append(Triple(head=head, relation=relation, tail=tail))
-
-    # 处理每个方剂
-    for formula in FORMULAS:
-        fname = formula["name"]
-        add_entity("方剂", fname)
-
-        # 方剂 -> 组成 -> 药材
-        for herb in formula["herbs"]:
-            add_entity("药材", herb)
-            add_triple(fname, "组成", herb)
-
-        # 方剂 -> 主治 -> 证型
-        syndrome = formula["syndrome"]
-        add_entity("证型", syndrome)
-        add_triple(fname, "主治", syndrome)
-
-        # 证型 -> 对应症状 -> 症状
-        for symptom in formula["symptoms"]:
-            add_entity("症状", symptom)
-            add_triple(syndrome, "对应症状", symptom)
-
-    # 药材 -> 功效 -> 功效
-    for herb, effects in HERB_EFFECTS.items():
-        add_entity("药材", herb)
-        for effect in effects:
-            add_entity("功效", effect)
-            add_triple(herb, "功效", effect)
+    for _, result in iter_demo_chunks():
+        for e in result.entities:
+            key = (e.entity_type, e.entity_name)
+            if key not in seen_entities:
+                seen_entities.add(key)
+                entities.append(e)
+        for t in result.triples:
+            key = (t.head, t.relation, t.tail)
+            if key not in seen_triples:
+                seen_triples.add(key)
+                triples.append(t)
 
     return ExtractionResult(entities=entities, triples=triples)
 
 
 def import_demo_data():
-    """导入演示数据到 Neo4j。"""
+    """导入演示数据到 Neo4j（含原文片段，便于向量检索与溯源）。"""
     loader = KnowledgeGraphLoader()
     try:
         loader.ensure_schema()
-        result = build_extraction_result()
-        stats = loader.load(result)
-        print(f"[OK] 演示数据导入完成：{stats['nodes']} 个节点，{stats['relations']} 条关系")
+        nodes, relations, chunks = set(), set(), 0
+        for chunk, result in iter_demo_chunks():
+            loader.load(result, chunk=chunk)
+            chunks += 1
+            for e in result.entities:
+                nodes.add((e.entity_type, e.entity_name))
+            for t in result.triples:
+                relations.add((t.head, t.relation, t.tail))
+        print(
+            f"[OK] 演示数据导入完成：{len(nodes)} 个节点，"
+            f"{len(relations)} 条关系，{chunks} 个原文片段"
+        )
         print(f"   - 方剂：{len(FORMULAS)} 个")
         print(f"   - 药材：{len(HERB_EFFECTS)} 个")
         print(f"   - 证型：{len(set(f['syndrome'] for f in FORMULAS))} 个")

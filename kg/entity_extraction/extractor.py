@@ -1,5 +1,7 @@
 """实体与关系抽取器：DeepSeek 结构化输出（实体 + 关系三元组）。"""
 
+import hashlib
+
 from pydantic import BaseModel, Field
 
 from common.llm import get_llm
@@ -49,37 +51,55 @@ class EntityRelationExtractor:
         ]
         return self.chain.invoke(messages)
 
+    def extract_chunks(self, doc: dict, chunk_size: int = 800):
+        """逐块抽取，产出 (chunk, ExtractionResult)，chunk 保留原文与顺序信息。"""
+        for chunk in split_document(doc, chunk_size):
+            yield chunk, self.extract(chunk["text"])
+
     def extract_document(self, doc: dict, chunk_size: int = 800) -> ExtractionResult:
         """对 parse_file 输出的结构化文档逐块抽取并合并去重。"""
-        """
-            doc = {
-            "sections": [
-            {
-            "content": "Albert Einstein was born in Germany. He developed the theory of relativity."
-            },
-            {
-            "content": "Einstein won the Nobel Prize in Physics in 1921. His famous equation is E=mc^2."
-            }
-            ]
-            }
-        """
         merged = ExtractionResult()
         seen_entities, seen_triples = set(), set()
 
-        for section in doc.get("sections", []):
-            for chunk in _split_chunks(section.get("content", ""), chunk_size):
-                result = self.extract(chunk)
-                for e in result.entities:
-                    key = (e.entity_type, e.entity_name)
-                    if key not in seen_entities:
-                        seen_entities.add(key)
-                        merged.entities.append(e)
-                for t in result.triples:
-                    key = (t.head, t.relation, t.tail)
-                    if key not in seen_triples:
-                        seen_triples.add(key)
-                        merged.triples.append(t)
+        for _, result in self.extract_chunks(doc, chunk_size):
+            for e in result.entities:
+                key = (e.entity_type, e.entity_name)
+                if key not in seen_entities:
+                    seen_entities.add(key)
+                    merged.entities.append(e)
+            for t in result.triples:
+                key = (t.head, t.relation, t.tail)
+                if key not in seen_triples:
+                    seen_triples.add(key)
+                    merged.triples.append(t)
         return merged
+
+
+def _source_key(source: str) -> str:
+    """用来源生成稳定短哈希，保证重复入库时 chunk_id 不变。"""
+    return hashlib.sha1(source.encode("utf-8")).hexdigest()[:12]
+
+
+def split_document(doc: dict, chunk_size: int = 800) -> list[dict]:
+    """把结构化文档切成带来源、章节、全局顺序的原文块。"""
+    source = str(doc.get("source", ""))
+    prefix = _source_key(source)
+    chunks = []
+    order = 0
+
+    for section_idx, section in enumerate(doc.get("sections", [])):
+        section_name = section.get("section", "") or ""
+        content = section.get("content", "") or ""
+        for chunk_idx, text in enumerate(_split_chunks(content, chunk_size)):
+            chunks.append({
+                "chunk_id": f"{prefix}-{section_idx}-{chunk_idx}",
+                "source": source,
+                "section": section_name,
+                "order": order,
+                "text": text,
+            })
+            order += 1
+    return chunks
 
 
 def _split_chunks(text: str, chunk_size: int) -> list[str]:

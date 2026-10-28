@@ -26,6 +26,7 @@ class VectorRetriever:
                 entity_map = json.load(f)
             self.collections.append({
                 "name": collection["name"],
+                "kind": collection.get("kind", "entity"),
                 "index": faiss.read_index(str(faiss_path)),
                 "entity_map": entity_map,
             })
@@ -35,7 +36,7 @@ class VectorRetriever:
         return len(self.collections) > 0
 
     def search(self, query: str, top_k: int = 10) -> list[dict]:
-        """返回按相似度降序的候选：{entity_id, label, name, text, score}"""
+        """返回按相似度降序的候选，统一携带来源与顺序元数据。"""
         if not self.available:
             return []
 
@@ -45,6 +46,7 @@ class VectorRetriever:
         results = []
         for collection in self.collections:
             index, entity_map = collection["index"], collection["entity_map"]
+            kind = collection["kind"]
             k = min(top_k, index.ntotal)
             if k == 0:
                 continue
@@ -52,12 +54,19 @@ class VectorRetriever:
             for score, idx in zip(scores[0], idxs[0]):
                 if idx < 0:
                     continue
-                entity = entity_map[idx]
+                item = entity_map[idx]
+                item_id = item.get("id") or item.get("entity_id", "")
                 results.append({
-                    "entity_id": entity["entity_id"],
-                    "label": entity["label"],
-                    "name": entity["name"],
-                    "text": entity["text"],
+                    "id": item_id,
+                    "entity_id": item.get("entity_id", ""),
+                    "chunk_id": item.get("chunk_id", item_id if kind == "chunk" else ""),
+                    "kind": item.get("kind", kind),
+                    "label": item.get("label", ""),
+                    "name": item.get("name", ""),
+                    "text": item.get("text", ""),
+                    "source": item.get("source", ""),
+                    "section": item.get("section", ""),
+                    "order": item.get("order", 0),
                     "score": float(score),
                 })
 

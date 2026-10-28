@@ -9,11 +9,16 @@ index:
   normalize: true
   dir: index           # 索引文件输出目录
 
-# 索引集合：与 Neo4j 节点通过 entity_id 关联
+# 索引集合：chunk 索引原文片段，entity 索引实体（名称 + 关联原文）
 collections:
+  - name: chunk_embeddings
+    kind: chunk
   - name: herb_embeddings
+    kind: entity
     entity_label: Herb
   - name: formula_embeddings
+    kind: entity
     entity_label: Fangji
   - name: symptom_embeddings
+    kind: entity
     entity_label: Symptom

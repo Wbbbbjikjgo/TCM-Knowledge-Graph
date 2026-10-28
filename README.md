@@ -82,7 +82,7 @@
 
 1. **采集阶段**：爬虫从中医药数据库、古籍文献、临床医案等来源采集原始文本数据。
 2. **抽取阶段**：DeepSeek 大模型结合 LangChain 的 `create_extraction_chain` 进行实体与关系抽取，生成结构化三元组。
-3. **存储阶段**：三元组存入 Neo4j 图数据库；实体文本经**达摩院 GTE 中文 Embedding** 向量化后存入 FAISS 向量索引。
+3. **存储阶段**：三元组存入 Neo4j 图数据库，原文按段落切分为 `Chunk` 节点并与实体建立 `MENTIONED_IN` 关系；原文块经**达摩院 GTE 中文 Embedding** 向量化后存入 FAISS 向量索引，实体索引同时关联其出现的原文片段。
 4. **检索阶段**：用户问题同时触发图谱 Cypher 查询和 FAISS 向量检索，结果经融合排序后返回。
 5. **生成阶段**：多 Agent 协同完成答案生成、图文内容创作与平台发布。
 
@@ -232,7 +232,7 @@ CREATE (f)-[:TREATS]->(s)
 
 **实现方案**：
 - 采用**达摩院 GTE 中文模型**（`damo/nlp_gte_sentence-embedding_chinese-base`，经 ModelScope 下载）进行文本向量化，输出 **768 维**向量；
-- 对药材功效、方剂主治、症状描述等知识片段分别生成向量；
+- 以文档切分后的**原文块（Chunk）**为主要向量化单元，保留 `chunk_id / source / section / chunk_seq`；实体索引额外拼接其关联原文片段；
 - 使用 FAISS 构建向量索引，索引类型选用 `IndexFlatIP`（内积相似度）或 `IndexIVFFlat`（大规模数据优化）；
 - 向量与 Neo4j 节点 ID 关联映射，支持向量检索后回查图数据库获取完整上下文。
 
@@ -379,11 +379,15 @@ app = workflow.compile()
 | 证型 Syndrome | name, description | name |
 | 功效 Effect | name, description | name |
 | 疾病 Disease | name, description | name |
+| 原文块 Chunk | chunk_id, text, source, section, chunk_seq | chunk_id（唯一约束） |
+
+> 实体节点通过 `(:Entity)-[:MENTIONED_IN]->(:Chunk)` 关联到其出现的原文块，三元组关系同时记录 `source` 与 `chunk_id`，用于回答溯源。
 
 ### 6.2 FAISS 向量索引
 
 | 索引名称 | 向量维度 | 数据量 | 关联映射 |
 | --- | --- | --- | --- |
+| chunk_embeddings | 768 | N 原文块数 | chunk_id → Neo4j Chunk |
 | herb_embeddings | 768 | N 药材数 | herb_id → Neo4j ID |
 | formula_embeddings | 768 | N 方剂数 | formula_id → Neo4j ID |
 | symptom_embeddings | 768 | N 症状数 | symptom_id → Neo4j ID |

@@ -10,16 +10,30 @@ st.caption("基于知识图谱 + 向量双引擎混合检索，回答可溯源�
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+
+def _source_markdown(index: int, source: dict) -> str:
+    is_chunk = source.get("kind") == "chunk"
+    title = (source.get("section") if is_chunk else source.get("name")) \
+        or source.get("name") or "原文片段"
+    meta = " · ".join(
+        x for x in (
+            source.get("label") or ("原文" if is_chunk else ""),
+            source.get("source"),
+        ) if x
+    )
+    head = f"**[{index}] {title}**"
+    if meta:
+        head += f"（{meta}）"
+    return f"{head}\n{source.get('text', '')}"
+
+
 for item in st.session_state.chat_history:
     with st.chat_message(item["role"]):
         st.markdown(item["content"])
         if item.get("sources"):
             with st.expander(f"📚 知识溯源（{len(item['sources'])} 条依据）"):
                 for i, s in enumerate(item["sources"], 1):
-                    st.markdown(
-                        f"**[{i}] {s.get('name', '')}**（{s.get('label', '')}）"
-                        f"\n{s.get('text', '')}"
-                    )
+                    st.markdown(_source_markdown(i, s))
 
 question = st.chat_input("请输入中医药相关问题，如：柴胡疏肝散由哪些药材组成？")
 
@@ -45,10 +59,7 @@ if question:
         if sources:
             with st.expander(f"📚 知识溯源（{len(sources)} 条依据）"):
                 for i, s in enumerate(sources, 1):
-                    st.markdown(
-                        f"**[{i}] {s.get('name', '')}**（{s.get('label', '')}）"
-                        f"\n{s.get('text', '')}"
-                    )
+                    st.markdown(_source_markdown(i, s))
 
     st.session_state.chat_history.append(
         {"role": "assistant", "content": answer, "sources": sources}

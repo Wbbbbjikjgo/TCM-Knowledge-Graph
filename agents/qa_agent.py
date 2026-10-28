@@ -40,8 +40,11 @@ def qa_handler(state: dict) -> dict:
     ).content
 
     sources = [
-        {"name": r.get("name", ""), "label": r.get("label", ""),
-         "text": r.get("text", ""), "retrieved_by": r.get("sources", [])}
+        {"id": r.get("id", ""), "kind": r.get("kind", ""),
+         "name": r.get("name", ""), "label": r.get("label", ""),
+         "text": r.get("text", ""), "source": r.get("source", ""),
+         "section": r.get("section", ""),
+         "retrieved_by": r.get("sources", [])}
         for r in results
     ]
     return {"answer": answer, "sources": sources}

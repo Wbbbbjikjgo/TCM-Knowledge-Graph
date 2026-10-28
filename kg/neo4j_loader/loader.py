@@ -7,7 +7,7 @@ from neo4j import GraphDatabase
 
 from common.config import load_config
 from kg.entity_extraction.extractor import Entity, ExtractionResult, Triple
-from kg.schema import ENTITY_LABEL_MAP, RELATION_TYPE_MAP
+from kg.schema import CHUNK_LABEL, ENTITY_LABEL_MAP, MENTIONED_IN, RELATION_TYPE_MAP
 
 
 def get_driver():
@@ -25,7 +25,7 @@ class KnowledgeGraphLoader:
         self.driver = driver or get_driver()
 
     def ensure_schema(self):
-        """按配置为各节点标签的 name 字段创建索引。"""
+        """按配置为各节点标签创建索引，并为原文块建立唯一约束。"""
         cfg = load_config("neo4j_config.yaml")["schema"]
         with self.driver.session() as session:
             for node in cfg["nodes"]:
@@ -33,13 +33,24 @@ class KnowledgeGraphLoader:
                     f"CREATE INDEX {node['label'].lower()}_{node['index_field']}_idx IF NOT EXISTS "
                     f"FOR (n:{node['label']}) ON (n.{node['index_field']})"
                 )
+            chunk = cfg.get("chunks")
+            if chunk:
+                label, field = chunk["label"], chunk["index_field"]
+                session.run(
+                    f"CREATE CONSTRAINT {label.lower()}_{field}_unique IF NOT EXISTS "
+                    f"FOR (n:{label}) REQUIRE n.{field} IS UNIQUE"
+                )
 
-    def load(self, result: ExtractionResult) -> dict:
-        """批量写入实体节点与关系三元组，返回写入统计。"""
+    def load(self, result: ExtractionResult, chunk: dict | None = None) -> dict:
+        """写入实体/关系；传入 chunk 时同时写入原文块并建立出现关系。"""
         entity_type_of = {e.entity_name: e.entity_type for e in result.entities}
         node_count = self._merge_nodes(result.entities)
-        rel_count = self._merge_relations(result.triples, entity_type_of)
-        return {"nodes": node_count, "relations": rel_count}
+        rel_count = self._merge_relations(result.triples, entity_type_of, chunk)
+        chunk_count = 0
+        if chunk:
+            self._merge_chunk(chunk, result.entities)
+            chunk_count = 1
+        return {"nodes": node_count, "relations": rel_count, "chunks": chunk_count}
 
     def _merge_nodes(self, entities: list[Entity]) -> int:
         by_label: dict[str, list[str]] = {}
@@ -59,7 +70,8 @@ class KnowledgeGraphLoader:
                 count += len(set(names))
         return count
 
-    def _merge_relations(self, triples: list[Triple], entity_type_of: dict) -> int:
+    def _merge_relations(self, triples: list[Triple], entity_type_of: dict,
+                         chunk: dict | None = None) -> int:
         count = 0
         with self.driver.session() as session:
             for t in triples:
@@ -68,15 +80,56 @@ class KnowledgeGraphLoader:
                 rel_type = RELATION_TYPE_MAP.get(t.relation)
                 if not (head_label and tail_label and rel_type):
                     continue
-                session.run(
-                    f"MATCH (a:{head_label} {{name: $head}}) "
-                    f"MATCH (b:{tail_label} {{name: $tail}}) "
-                    f"MERGE (a)-[:{rel_type}]->(b)",
-                    head=t.head,
-                    tail=t.tail,
-                )
+                if chunk:
+                    session.run(
+                        f"MATCH (a:{head_label} {{name: $head}}) "
+                        f"MATCH (b:{tail_label} {{name: $tail}}) "
+                        f"MERGE (a)-[r:{rel_type}]->(b) "
+                        f"ON CREATE SET r.source = $source, r.chunk_id = $chunk_id",
+                        head=t.head,
+                        tail=t.tail,
+                        source=chunk["source"],
+                        chunk_id=chunk["chunk_id"],
+                    )
+                else:
+                    session.run(
+                        f"MATCH (a:{head_label} {{name: $head}}) "
+                        f"MATCH (b:{tail_label} {{name: $tail}}) "
+                        f"MERGE (a)-[:{rel_type}]->(b)",
+                        head=t.head,
+                        tail=t.tail,
+                    )
                 count += 1
         return count
+
+    def _merge_chunk(self, chunk: dict, entities: list[Entity]) -> None:
+        """写入原文块，并把该块抽取出的实体挂到块上。"""
+        by_label: dict[str, list[str]] = {}
+        for e in entities:
+            label = ENTITY_LABEL_MAP.get(e.entity_type)
+            if label:
+                by_label.setdefault(label, []).append(e.entity_name)
+
+        with self.driver.session() as session:
+            session.run(
+                f"MERGE (c:{CHUNK_LABEL} {{chunk_id: $chunk_id}}) "
+                f"SET c.text = $text, c.source = $source, "
+                f"c.section = $section, c.chunk_seq = $chunk_seq",
+                chunk_id=chunk["chunk_id"],
+                text=chunk["text"],
+                source=chunk["source"],
+                section=chunk.get("section", ""),
+                chunk_seq=chunk.get("order", 0),
+            )
+            for label, names in by_label.items():
+                session.run(
+                    f"MATCH (c:{CHUNK_LABEL} {{chunk_id: $chunk_id}}) "
+                    f"UNWIND $names AS name "
+                    f"MATCH (n:{label} {{name: name}}) "
+                    f"MERGE (n)-[:{MENTIONED_IN}]->(c)",
+                    chunk_id=chunk["chunk_id"],
+                    names=list(dict.fromkeys(names)),
+                )
 
     def close(self):
         self.driver.close()
